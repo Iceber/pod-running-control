@@ -13,4 +13,4 @@ GOPATH=$(go env GOPATH | awk -F ':' '{print $1}')
 export PATH=$PATH:$GOPATH/bin
 
 cd "${REPO_ROOT}"
-controller-gen crd paths='./api/...' output:crd:dir='./crds'
+controller-gen crd paths='./api/...' output:crd:dir='./manifests/crds'

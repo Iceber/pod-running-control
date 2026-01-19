@@ -8,7 +8,7 @@ This is suitable for scenarios where you want to reserve node resources without 
 * Extremely lightweight and **non-intrusive** to business containers.
 * Does not depend on CRD, supports [CEL](https://kubernetes.io/docs/reference/using-api/cel/) and monitors any resource type.
 
-## Examples
+## Quick Start
 1. **Apply RBAC** for `running-control` init container to monitor resources.
 ```bash
 $ kubectl apply -f ./examples/rbac.yaml
@@ -38,6 +38,13 @@ spec:
     ports:
     - containerPort: 80
 ```
+The `nginx` container is not running now, the pod is blocked at the init-container stage.
+
+3. It's time to end the blocking and get the `nginx` container running
+```bash
+$ kubectl annotate pod test-pod pod-running-control.io/break='false'
+```
+
 
 ## Roadmap
 This is a project with a very clear objective.

@@ -1,0 +1,21 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: pod-running-control
+rules:
+  - apiGroups: ['']
+    resources: ['pods']
+    verbs: ["watch", "list"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: pod-running-control
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: pod-running-control
+subjects:
+  - kind: ServiceAccount
+    name: default

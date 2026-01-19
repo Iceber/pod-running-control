@@ -1,0 +1,52 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: pod-running-control
+rules:
+  - apiGroups: ['']
+    resources: ['pods']
+    verbs: ["watch", "list"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: pod-running-control
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: pod-running-control
+subjects:
+  - kind: ServiceAccount
+    name: default
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: test-pod
+  annotations:
+    pod-running-control.io/break: 'true'
+spec:
+  initContainers:
+  - name: running-control
+    image: ghcr.io/iceber/pod-running-control:latest
+    args:
+      - "--gate-gvr=pods.v1."
+      - "--gate-namespace=$(POD_RUNNING_GATE_NAMESPACE)"
+      - "--gate-name=$(POD_RUNNING_GATE_NAME)"
+      - |
+        --gate-expression=!has(object.metadata.annotations) || !('pod-running-control.io/break' in object.metadata.annotations) || object.metadata.annotations['pod-running-control.io/break'] != 'true'
+    env:
+    - name: POD_RUNNING_GATE_NAMESPACE
+      valueFrom:
+        fieldRef:
+          fieldPath: metadata.namespace
+    - name: POD_RUNNING_GATE_NAME
+      valueFrom:
+        fieldRef:
+          fieldPath: metadata.name
+  containers:
+  - name: nginx
+    image: nginx:1.14.2
+    ports:
+    - containerPort: 80

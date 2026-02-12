@@ -109,7 +109,14 @@ func main() {
 		AddFunc:    func(obj interface{}) { gateChecker(obj.(*unstructured.Unstructured)) },
 		UpdateFunc: func(_, obj interface{}) { gateChecker(obj.(*unstructured.Unstructured)) },
 		DeleteFunc: func(obj interface{}) {
-			o := obj.(*unstructured.Unstructured)
+			if d, ok := obj.(cache.DeletedFinalStateUnknown); ok {
+				obj = d.Obj
+			}
+			o, ok := obj.(*unstructured.Unstructured)
+			if !ok {
+				klog.Errorf("Unexpected object type: %T", obj)
+				return
+			}
 			klog.Warningf("Gate resource deleted: %s/%s", o.GetNamespace(), o.GetName())
 		},
 	}); err != nil {

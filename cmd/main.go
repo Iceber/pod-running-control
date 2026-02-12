@@ -109,15 +109,13 @@ func main() {
 		AddFunc:    func(obj interface{}) { gateChecker(obj.(*unstructured.Unstructured)) },
 		UpdateFunc: func(_, obj interface{}) { gateChecker(obj.(*unstructured.Unstructured)) },
 		DeleteFunc: func(obj interface{}) {
-			if d, ok := obj.(cache.DeletedFinalStateUnknown); ok {
-				obj = d.Obj
-			}
-			o, ok := obj.(*unstructured.Unstructured)
-			if !ok {
-				klog.Errorf("Unexpected object type: %T", obj)
+			key, err := cache.DeletionHandlingMetaNamespaceKeyFunc(obj)
+			if err != nil {
+				klog.Errorf("Failed to get key for deleted object: %v", err)
 				return
 			}
-			klog.Warningf("Gate resource deleted: %s/%s", o.GetNamespace(), o.GetName())
+			namespace, name, _ := cache.SplitMetaNamespaceKey(key)
+			klog.Warningf("Gate resource deleted: %s/%s", namespace, name)
 		},
 	}); err != nil {
 		klog.Fatalf("Failed to add event handler: %v", err)

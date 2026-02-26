@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"flag"
-	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
@@ -18,6 +17,7 @@ import (
 	"k8s.io/client-go/dynamic/dynamicinformer"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/klog/v2"
 
 	"github.com/Iceber/pod-running-control/cel"
 )
@@ -58,6 +58,7 @@ func main() {
 	flag.StringVar(&gate.namespace, "gate-namespace", "", "namespace of gate resource")
 	flag.StringVar(&gate.name, "gate-name", "", "name of gate resource")
 	flag.StringVar(&expression, "gate-expression", "", "name of gate resource")
+	klog.InitFlags(nil)
 	flag.Parse()
 
 	if gvr, _ := schema.ParseResourceArg(gateGVR); gvr != nil {
@@ -70,7 +71,7 @@ func main() {
 
 	compositionEnvTemplate, err := plugincel.NewCompositionEnv(plugincel.VariablesTypeName, environment.MustBaseEnvSet(environment.DefaultCompatibilityVersion()))
 	if err != nil {
-		panic(err)
+		klog.Fatalf("Failed to create composition environment: %v", err)
 	}
 	optionalVars := plugincel.OptionalVariableDeclarations{HasParams: false, HasAuthorizer: false}
 	compiler := plugincel.NewCompiler(compositionEnvTemplate.EnvSet)
@@ -78,11 +79,11 @@ func main() {
 
 	config, err := clientcmd.BuildConfigFromFlags("", kubeconfig)
 	if err != nil {
-		os.Exit(1)
+		klog.Fatalf("Failed to build kubeconfig: %v", err)
 	}
 	client, err := dynamic.NewForConfig(config)
 	if err != nil {
-		os.Exit(1)
+		klog.Fatalf("Failed to create dynamic client: %v", err)
 	}
 
 	informer := dynamicinformer.NewFilteredDynamicInformer(client, gate.gvr, gate.namespace, 0, nil, func(opts *metav1.ListOptions) {
@@ -92,23 +93,32 @@ func main() {
 	gateChecker := func(obj *unstructured.Unstructured) {
 		result, err := cel.Evaluate(context.TODO(), obj, condition)
 		if err != nil {
-			fmt.Println(err)
+			klog.Errorf("Failed to evaluate gate condition: %v", err)
 			return
 		}
 		if result.Error != nil {
-			fmt.Println(result.Error)
+			klog.Errorf("Gate condition evaluation error: %v", result.Error)
 			return
 		}
 		if result.EvalResult == celtypes.True {
+			klog.Info("Gate condition met, exiting")
 			os.Exit(0)
 		}
 	}
 	if _, err = informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    func(obj interface{}) { gateChecker(obj.(*unstructured.Unstructured)) },
 		UpdateFunc: func(_, obj interface{}) { gateChecker(obj.(*unstructured.Unstructured)) },
-		DeleteFunc: func(_ interface{}) { /*log*/ },
+		DeleteFunc: func(obj interface{}) {
+			key, err := cache.DeletionHandlingMetaNamespaceKeyFunc(obj)
+			if err != nil {
+				klog.Errorf("Failed to get key for deleted object: %v", err)
+				return
+			}
+			namespace, name, _ := cache.SplitMetaNamespaceKey(key)
+			klog.Warningf("Gate resource deleted: %s/%s", namespace, name)
+		},
 	}); err != nil {
-		os.Exit(1)
+		klog.Fatalf("Failed to add event handler: %v", err)
 	}
 
 	stopCh := make(chan struct{})
